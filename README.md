@@ -1,2 +1,54 @@
-# selo-audio-master-ai4
-SELO AUDIO MASTER AI – An AI-powered voiceover and podcast audio studio focused on expressive Arabic speech, emotion control, voice performance, and professional audio production.
+# SELO AUDIO MASTER AI
+
+نسخة ويب أولًا من استوديو الصوت والتعليق الصوتي. الهدف أن يعمل التطبيق من المتصفح على الكمبيوتر دون تثبيت برنامج.
+
+## الموجود حاليًا في النسخة التأسيسية
+- واجهة عربية RTL بتصميم داكن ولمسات ذهبية.
+- محرر سكريبت مع إدراج علامات المشاعر.
+- محلل يقسم النص إلى فقرات ومقاطع ويقرأ علامات مثل [حزين] و[غاضب] و[همس] و[وقفة].
+- سجل محركات منفصل بعقد موحد، لتسهيل إضافة محركات TTS دون إعادة بناء الواجهة.
+- نغمة اختبار للتأكد من عمل إخراج الصوت في المتصفح.
+- إعداد Render وGitHub Actions للاختبارات.
+
+**مهم:** المحرك الموجود حاليًا يصدر نغمة اختبار فقط، وليس تحويل نص إلى كلام. لم يتم توصيل محرك TTS حقيقي بعد، ولن نعرضه على أنه يعمل قبل دمجه واختباره فعليًا. كما أن النسخة لم تُنشر بعد على رابط عام.
+
+## التشغيل محليًا
+يتطلب Python 3.11 أو أحدث.
+
+```bash
+python -m venv .venv
+# Windows:
+.venv\\Scripts\\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+``
+
+افتح http://127.0.0.1:8000
+
+## API
+- `GET /api/health` حالة الخدمة.
+- `GET /api/engines` قائمة المحركات المسجلة.
+- `POST /api/parse` تحليل السكريبت.
+- `POST /api/preview` إخراج نغمة الاختبار الحالية.
+
+## الاختبارات
+```bash
+pytest -q
+``
+
+## النشر على Render
+المستودع يحتوي على `render.yaml`. اربطه بخدمة Render Web Service، وراجع إعدادات الخدمة قبل تأكيد النشر.
+
+## المعمارية
+- `app/main.py`: واجهة API وخدمة الويب.
+- `app/script_parser.py`: تحليل السكريبت والمشاعر.
+- `app/engines/base.py`: العقد الموحد لمحركات الصوت.
+- `app/engines/__init__.py`: سجل المحركات.
+- `app/engines/`: كل محرك مستقل في ملف منفصل.
+- `static/index.html`: واجهة المتصفح.
+- `tests/`: اختبارات تلقائية.
+
+لا تضع مفاتيح API أو كلمات مرور داخل المستودع. استخدم Environment Variables في إعدادات الاستضافة.
