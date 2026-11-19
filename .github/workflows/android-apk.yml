@@ -1,4 +1,5 @@
 name: Android APK
+run-name: Build SELO Voice Actor AI Android APK
 on:
   workflow_dispatch:
   push:
