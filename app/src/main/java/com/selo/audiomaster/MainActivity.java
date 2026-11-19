@@ -64,18 +64,20 @@ public class MainActivity extends Activity {
     new Thread(()->{
       HttpURLConnection conn=null;
       try{
-        JSONObject annotation=new JSONObject();annotation.put("type","speech_metadata");annotation.put("style",deliveryStyle);
-        JSONObject part=new JSONObject();part.put("type","text");part.put("text",text);part.put("annotations",new JSONArray().put(annotation));
-        JSONObject input=new JSONObject();input.put("type","user_input");input.put("content",new JSONArray().put(part));
-        JSONObject speech=new JSONObject();speech.put("speech_config",new JSONArray().put(new JSONObject().put("voice",selectedVoice)));
-        JSONObject body=new JSONObject();body.put("model","gemini-3.8-flash-tts");body.put("input",new JSONArray().put(input));body.put("response_format",new JSONObject().put("type","audio"));body.put("generation_config",speech);
-        URL url=new URL("https://generativelanguage.googleapis.com/v1beta/interactions");conn=(HttpURLConnection)url.openConnection();conn.setRequestMethod("POST");conn.setConnectTimeout(30000);conn.setReadTimeout(180000);conn.setDoOutput(true);conn.setRequestProperty("x-goog-api-key",key);conn.setRequestProperty("Content-Type","application/json; charset=UTF-8");
+        JSONObject part=new JSONObject();part.put("text",text);part.put("speechMetadata",new JSONObject().put("style",deliveryStyle));
+        JSONObject content=new JSONObject();content.put("role","user");content.put("parts",new JSONArray().put(part));
+        JSONObject voiceConfig=new JSONObject().put("prebuiltVoiceConfig",new JSONObject().put("voiceName",selectedVoice));
+        JSONObject speechConfig=new JSONObject().put("voiceConfig",voiceConfig);
+        JSONObject generationConfig=new JSONObject().put("responseModalities",new JSONArray().put("AUDIO")).put("speechConfig",speechConfig);
+        JSONObject body=new JSONObject();body.put("contents",new JSONArray().put(content));body.put("generationConfig",generationConfig);
+        URL url=new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-tts:generateContent?key="+java.net.URLEncoder.encode(key,"UTF-8"));
+        conn=(HttpURLConnection)url.openConnection();conn.setRequestMethod("POST");conn.setConnectTimeout(30000);conn.setReadTimeout(180000);conn.setDoOutput(true);conn.setRequestProperty("Content-Type","application/json; charset=UTF-8");
         try(OutputStream os=conn.getOutputStream()){os.write(body.toString().getBytes("UTF-8"));}
         int code=conn.getResponseCode();InputStream is=(code>=200&&code<300)?conn.getInputStream():conn.getErrorStream();String response=readAll(is);
         if(code<200||code>=300)throw new Exception("Gemini API ("+code+"): "+extractError(response));
-        JSONObject json=new JSONObject(response);JSONArray steps=json.optJSONArray("steps");String audio=null;
-        if(steps!=null)for(int i=steps.length()-1;i>=0&&audio==null;i--){JSONObject st=steps.optJSONObject(i);if(st==null)continue;JSONArray content=st.optJSONArray("content");if(content!=null)for(int j=0;j<content.length();j++){JSONObject c=content.optJSONObject(j);if(c!=null&&"audio".equals(c.optString("type"))){audio=c.optString("data",null);if(audio!=null)break;}}}
-        if(audio==null)throw new Exception("لم يرجع المحرك ملفًا صوتيًا. راجع إعدادات الحساب أو جرّب مرة أخرى.");
+        JSONObject json=new JSONObject(response);JSONArray candidates=json.optJSONArray("candidates");String audio=null;
+        if(candidates!=null&&candidates.length()>0){JSONObject candidate=candidates.optJSONObject(0);JSONObject candidateContent=candidate==null?null:candidate.optJSONObject("content");JSONArray parts=candidateContent==null?null:candidateContent.optJSONArray("parts");if(parts!=null)for(int i=0;i<parts.length();i++){JSONObject p=parts.optJSONObject(i);JSONObject inline=p==null?null:p.optJSONObject("inlineData");if(inline!=null&&inline.has("data")){audio=inline.optString("data",null);if(audio!=null)break;}}}
+        if(audio==null)throw new Exception("لم يرجع المحرك ملفًا صوتيًا. راجع مفتاح API وتوفر النموذج.");
         byte[] bytes=android.util.Base64.decode(audio,android.util.Base64.DEFAULT);
         File dir=getExternalFilesDir(Environment.DIRECTORY_MUSIC);if(dir==null)dir=getFilesDir();if(!dir.exists())dir.mkdirs();
         File out=new File(dir,"SELO_Voice_"+new SimpleDateFormat("yyyyMMdd_HHmmss",Locale.US).format(new Date())+".wav");
