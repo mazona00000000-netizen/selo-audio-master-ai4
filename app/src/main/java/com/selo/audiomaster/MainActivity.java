@@ -57,16 +57,17 @@ public class MainActivity extends Activity {
   private String selectedStyle(){String s=(String)mood.getSelectedItem();String extra=style.getText().toString().trim();return "Perform in Egyptian Arabic. "+s+". Natural human voice acting, expressive but believable, clear pronunciation, consistent pacing. "+extra;}
   private void generateSpeech(){
     final String key=apiKey.getText().toString().trim(), text=script.getText().toString().trim();
+    final String selectedVoice=voiceId(), deliveryStyle=selectedStyle();
     if(key.isEmpty()){status.setText("أدخل مفتاح Gemini API أولًا.");return;}
     if(text.isEmpty()){status.setText("اكتب النص الذي تريد تحويله إلى صوت.");return;}
     generate.setEnabled(false);play.setEnabled(false);export.setEnabled(false);status.setText("جاري توليد الأداء الصوتي من Gemini 3.8 Flash TTS...");
     new Thread(()->{
       HttpURLConnection conn=null;
       try{
-        JSONObject annotation=new JSONObject();annotation.put("type","speech_metadata");annotation.put("style",selectedStyle());
+        JSONObject annotation=new JSONObject();annotation.put("type","speech_metadata");annotation.put("style",deliveryStyle);
         JSONObject part=new JSONObject();part.put("type","text");part.put("text",text);part.put("annotations",new JSONArray().put(annotation));
         JSONObject input=new JSONObject();input.put("type","user_input");input.put("content",new JSONArray().put(part));
-        JSONObject speech=new JSONObject();speech.put("speech_config",new JSONArray().put(new JSONObject().put("voice",voiceId())));
+        JSONObject speech=new JSONObject();speech.put("speech_config",new JSONArray().put(new JSONObject().put("voice",selectedVoice)));
         JSONObject body=new JSONObject();body.put("model","gemini-3.8-flash-tts");body.put("input",new JSONArray().put(input));body.put("response_format",new JSONObject().put("type","audio"));body.put("generation_config",speech);
         URL url=new URL("https://generativelanguage.googleapis.com/v1beta/interactions");conn=(HttpURLConnection)url.openConnection();conn.setRequestMethod("POST");conn.setConnectTimeout(30000);conn.setReadTimeout(180000);conn.setDoOutput(true);conn.setRequestProperty("x-goog-api-key",key);conn.setRequestProperty("Content-Type","application/json; charset=UTF-8");
         try(OutputStream os=conn.getOutputStream()){os.write(body.toString().getBytes("UTF-8"));}
