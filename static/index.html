@@ -7,7 +7,7 @@
 <div class="chips"><button class="chip" data-cue="هادي">+ هادي</button><button class="chip" data-cue="حزين">+ حزين</button><button class="chip" data-cue="غاضب">+ غاضب</button><button class="chip" data-cue="خايف">+ خايف</button><button class="chip" data-cue="تشويق">+ تشويق</button><button class="chip" data-cue="همس">+ همس</button><button class="chip" data-cue="وقفة">+ وقفة</button></div>
 <div class="actions"><button class="btn primary" id="analyze">حلّل السكريبت</button><button class="btn" id="clear">مسح النص</button><span class="muted" id="parseStatus">جاهز لاستقبال النص</span></div><div class="results" id="results"><div class="cardhead" style="margin:22px 0 10px"><h2>نتيجة التحليل</h2><span class="muted" id="counts"></span></div><div id="paragraphs"></div></div></section>
 <aside class="side"><section class="card"><div class="cardhead"><h2>② محركات الصوت</h2><span class="muted">قابلة للتوسعة</span></div><div id="engines"><div class="engine">جاري فحص المحركات...</div></div><div class="notice">المعاينة الحالية نغمة اختبار للتأكد من تشغيل الصوت فقط، وليست صوتًا ناطقًا. لن نعرض أي محرك TTS على أنه يعمل قبل توصيله واختباره فعليًا.</div></section>
-<section class="card"><div class="cardhead"><h2>③ إعدادات المعاينة</h2><span class="muted">اختبار مبدئي</span></div><div class="range"><label><span>حدة النغمة</span><b id="pitchValue">1.00×</b></label><input id="pitch" type="range" min=".6" max="1.8" step=".05" value="1"></div><button class="btn primary" id="preview" style="width:100%">تشغيل نغمة الاختبار</button><audio id="player" controls></audio></section>
+<section class="card"><div class="cardhead"><h2>③ تحويل النص إلى صوت</h2><span class="muted">مجاني · بدون مفتاح · على جهازك</span></div><p class="audio-note">يستخدم نموذجًا عربيًا محليًا داخل المتصفح. أول مرة يحتاج تنزيل النموذج (حوالي 16–30 MB)، وبعدها يُحفظ في الجهاز. الصوت الحالي فصحى عربية وبصوت واحد.</p><div class="range"><label><span>سرعة الإلقاء</span><b id="speedValue">1.00×</b></label><input id="ttsSpeed" type="range" min=".8" max="1.2" step=".05" value="1"></div><button class="btn primary" id="preview" style="width:100%">حوّل النص إلى صوت</button><div class="muted" id="ttsStatus" style="margin-top:12px;line-height:1.8">جاهز — اكتب النص ثم اضغط التحويل.</div><audio id="player" controls></audio><div class="actions"><a class="btn" id="downloadTts" hidden download="selo-voice.wav">تنزيل ملف الصوت WAV</a></div></section>
 <section class="card"><div class="cardhead"><h2>حالة المشروع</h2><span class="pill">WEB FIRST</span></div><div class="metric"><div><strong id="paragraphCount">0</strong><span>فقرة</span></div><div><strong id="segmentCount">0</strong><span>مقطع</span></div><div><strong>RTL</strong><span>واجهة عربية</span></div></div></section></aside></div><section class="card audio-tools"><div class="cardhead"><h2>④ معالجة وتحسين الصوت</h2><span class="muted">المعالجة داخل المتصفح</span></div>
 <div class="filepick"><input id="audioFile" type="file" accept="audio/*"><span class="muted" id="audioFileName">اختار ملف صوت من جهازك</span></div>
 <div class="controls">
@@ -26,8 +26,31 @@ async function loadEngines(){try{const r=await fetch('/api/engines'),d=await r.j
 $('analyze').onclick=async()=>{const script=$('script').value;if(!script.trim()){$('parseStatus').textContent='اكتب السكريبت الأول';return}$('analyze').disabled=true;$('parseStatus').textContent='جاري التحليل...';try{const r=await fetch('/api/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({script})}),d=await r.json();$('results').style.display='block';$('counts').textContent=d.paragraphs.length+' فقرة · '+d.segments+' مقطع';$('paragraphCount').textContent=d.paragraphs.length;$('segmentCount').textContent=d.segments;$('paragraphs').innerHTML=d.paragraphs.map(p=>'<div class="resultrow"><b>الفقرة '+(p.index+1)+' · '+p.segment_count+' مقطع</b><p>'+esc(p.snippet)+'</p>'+p.segments.map(s=>'<p>• '+(s.cue?'<b>['+esc(s.cue)+']</b> ':'')+esc(s.text||'وقفة صمت')+' <span style="color:#d7b56d">('+esc(s.profile.label)+')</span></p>').join('')+'</div>').join('');$('parseStatus').textContent=d.unknown_cues.length?'فيه تعبيرات محتاجة مراجعة':'التحليل اكتمل'}catch(e){$('parseStatus').textContent='حصل خطأ في التحليل'}finally{$('analyze').disabled=false}};
 $('clear').onclick=()=>{$('script').value='';$('results').style.display='none';$('parseStatus').textContent='تم مسح النص'};
 document.querySelectorAll('[data-cue]').forEach(b=>b.onclick=()=>{const t=$('script'),cue='['+b.dataset.cue+'] ',a=t.selectionStart,z=t.selectionEnd;t.setRangeText(cue,a,z,'end');t.focus()});
-$('pitch').oninput=()=>$('pitchValue').textContent=Number($('pitch').value).toFixed(2)+'×';
-$('preview').onclick=async()=>{const b=$('preview');b.disabled=true;b.textContent='جاري تجهيز المعاينة...';try{const r=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({engine:'demo',text:$('script').value||'test',settings:{pitch:Number($('pitch').value)}})});if(!r.ok)throw Error();const url=URL.createObjectURL(await r.blob());$('player').src=url;$('player').play()}catch(e){alert('تعذر تشغيل المعاينة')}finally{b.disabled=false;b.textContent='تشغيل نغمة الاختبار'}};
+let localTts=null,localAudioUrl=null;
+$('ttsSpeed').oninput=()=>$('speedValue').textContent=Number($('ttsSpeed').value).toFixed(2)+'×';
+$('preview').onclick=async()=>{
+ const b=$('preview'),status=$('ttsStatus'),text=$('script').value.trim();
+ if(!text){status.textContent='اكتب النص الذي تريد تحويله أولًا.';return}
+ b.disabled=true;b.textContent='جاري تجهيز الصوت...';$('downloadTts').hidden=true;
+ try{
+  if(!localTts){
+   status.textContent='يتم تحميل محرك الصوت المجاني لأول مرة (حوالي 16–30 MB). اترك الصفحة مفتوحة حتى يكتمل التحميل.';
+   const {NabraTTS}=await import('https://cdn.jsdelivr.net/npm/nabra-tts@0.1.0/+esm');
+   localTts=await NabraTTS.load({dtype:'fp16',device:'auto',onProgress:({loaded,total})=>{
+    if(total)status.textContent='تحميل مكونات الصوت: '+Math.round(loaded/total*100)+'%';
+   }});
+  }
+  status.textContent='جاري توليد الصوت على جهازك...';
+  const result=await localTts.generate(text,{speed:Number($('ttsSpeed').value)});
+  const blob=localTts.toWav(result.audio);
+  if(localAudioUrl)URL.revokeObjectURL(localAudioUrl);
+  localAudioUrl=URL.createObjectURL(blob);$('player').src=localAudioUrl;
+  $('downloadTts').href=localAudioUrl;$('downloadTts').hidden=false;
+  await $('player').play();status.textContent='تم إنشاء الصوت على جهازك. تقدر تسمعه أو تنزّله بصيغة WAV.';
+ }catch(e){
+  console.error(e);status.textContent='ما قدرنا نجهز الصوت. تأكد من اتصال الإنترنت لأول تنزيل، ثم أعد المحاولة. '+(e?.message||'');
+ }finally{b.disabled=false;b.textContent='حوّل النص إلى صوت'}
+};
 
 let sourceBuffer=null,masterContext=null,activeSource=null;
 const ids=['gain','speed','lowcut','presence','compress'];
