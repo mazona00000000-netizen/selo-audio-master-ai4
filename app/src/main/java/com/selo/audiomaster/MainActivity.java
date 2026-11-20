@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+import android.speech.tts.Voice;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -14,24 +17,26 @@ import android.media.MediaPlayer;
 import android.net.Uri;
 import android.provider.MediaStore;
 import android.os.Environment;
-import org.json.*;
 import java.io.*;
-import java.net.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class MainActivity extends Activity {
   private final int bg=0xFF101116, panel=0xFF1D1F28, gold=0xFFE0BD75, white=0xFFF7F3EA, muted=0xFFB8B2A8;
-  private EditText apiKey, script, style;
-  private Spinner voice, mood;
-  private Button generate, play, export;
-  private TextView status;
-  private byte[] wavBytes;
+  private EditText script;
+  private Spinner voicePicker;
+  private SeekBar speed;
+  private TextView speedLabel,status;
+  private Button generate,play,export;
+  private TextToSpeech tts;
+  private final ArrayList<Voice> arabicVoices=new ArrayList<>();
   private File wavFile;
   private MediaPlayer player;
   private final Handler handler=new Handler(Looper.getMainLooper());
 
-  @Override public void onCreate(Bundle b){super.onCreate(b); getWindow().setStatusBarColor(bg); getWindow().setNavigationBarColor(bg); build();}
+  @Override public void onCreate(Bundle b){
+    super.onCreate(b);getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(bg);build();initTts();
+  }
   private TextView label(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);t.setPadding(0,8,0,8);return t;}
   private GradientDrawable shape(int color){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(22);d.setStroke(1,0xFF393640);return d;}
   private LinearLayout card(LinearLayout root){LinearLayout c=new LinearLayout(this);c.setOrientation(1);c.setPadding(18,14,18,14);c.setBackground(shape(panel));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,10,0,10);root.addView(c,p);return c;}
@@ -41,56 +46,52 @@ public class MainActivity extends Activity {
     LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(18,14,18,26);root.setBackgroundColor(bg);
     ScrollView scroll=new ScrollView(this);scroll.addView(root);setContentView(scroll);
     root.addView(label("SELO  VOICE ACTOR AI",22,gold));
-    root.addView(label("استوديو الأداء الصوتي بالذكاء الاصطناعي",14,muted));
-    LinearLayout keyCard=card(root);keyCard.addView(label("مفتاح Gemini API",16,white));apiKey=edit("الصق مفتاح Google AI Studio هنا",false);apiKey.setSingleLine(true);apiKey.setInputType(129);keyCard.addView(apiKey);
-    TextView note=label("المفتاح يُستخدم للاتصال بمحرك توليد الصوت ولا يتم حفظه داخل التطبيق.",11,muted);keyCard.addView(note);
-    LinearLayout textCard=card(root);textCard.addView(label("النص المراد أداؤه",18,white));script=edit("اكتب القصة أو التعليق الصوتي هنا...",true);textCard.addView(script);
-    LinearLayout voiceCard=card(root);voiceCard.addView(label("اختيار خامة المؤدي",17,white));
-    voice=new Spinner(this);String[] voices={"Charon — صوت رجالي إخباري","Algenib — صوت رجالي خشن","Orus — صوت رجالي حازم","Rasalgethi — صوت رجالي معلوماتي","Enceladus — صوت رجالي هوائي","Kore — صوت نسائي حازم","Aoede — صوت نسائي ناعم","Sulafat — صوت دافئ","Schedar — أداء متزن","Fenrir — أداء قوي"};voice.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,voices));voiceCard.addView(voice);
-    voiceCard.addView(label("أسلوب الإلقاء والانفعال",16,white));mood=new Spinner(this);String[] moods={"درامي سينمائي عميق","حزين ومؤثر مع إحساس واضح","خوف وتوتر وهمس","غضب وانفعال قوي","تشويق وغموض وتصاعد تدريجي","هادئ ودافئ كراوي بودكاست","إخباري واضح وواثق","فرح وحماس طبيعي","بكاء وانكسار عاطفي","ساخر وخفيف الظل"};mood.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,moods));voiceCard.addView(mood);
-    voiceCard.addView(label("توجيه إضافي للأداء (اختياري)",15,white));style=edit("مثال: باللهجة المصرية، مخارج واضحة، سرعة متوسطة، وقفات طبيعية...",true);style.setMinLines(2);style.setMaxLines(4);voiceCard.addView(style);
-    LinearLayout action=card(root);generate=btn("✦  توليد الأداء الصوتي");action.addView(generate);play=btn("▶  تشغيل النتيجة");play.setEnabled(false);action.addView(play);export=btn("حفظ WAV في الهاتف");export.setEnabled(false);action.addView(export);
-    status=label("جاهز — اكتب النص وأدخل مفتاح Gemini API لبدء التوليد.",13,gold);root.addView(status);
+    root.addView(label("تحويل النص إلى صوت — بدون مفتاح API أو رسوم",14,muted));
+    LinearLayout textCard=card(root);textCard.addView(label("النص المراد أداؤه",18,white));script=edit("اكتب النص العربي هنا...",true);textCard.addView(script);
+    LinearLayout voiceCard=card(root);voiceCard.addView(label("الصوت العربي المتاح على هاتفك",16,white));
+    voicePicker=new Spinner(this);voicePicker.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"جاري فحص أصوات الهاتف..."}));voiceCard.addView(voicePicker);
+    TextView note=label("يعتمد الصوت على محرك النطق المثبّت في جهازك. إذا لم يظهر صوت عربي طبيعي، نزّل صوتًا عربيًا من إعدادات تحويل النص إلى كلام في الهاتف. لا يُرسل النص إلى خدمة API من التطبيق.",11,muted);voiceCard.addView(note);
+    Button settings=btn("إعدادات تنزيل الأصوات");voiceCard.addView(settings);settings.setOnClickListener(v->{try{startActivity(new Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA));}catch(Exception e){status.setText("افتح إعدادات الهاتف ثم إمكانية الوصول ← تحويل النص إلى كلام.");}});
+    LinearLayout speedCard=card(root);speedCard.addView(label("سرعة الإلقاء",16,white));speedLabel=label("1.00×",12,gold);speedCard.addView(speedLabel);speed=new SeekBar(this);speed.setMax(80);speed.setProgress(40);speed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar b,int p,boolean u){float rate=.6f+p/100f;speedLabel.setText(String.format(Locale.US,"%.2f×",rate));}public void onStartTrackingTouch(SeekBar b){}public void onStopTrackingTouch(SeekBar b){}});speedCard.addView(speed);
+    LinearLayout actions=card(root);generate=btn("✦  إنشاء التعليق الصوتي");actions.addView(generate);play=btn("▶  تشغيل النتيجة");play.setEnabled(false);actions.addView(play);export=btn("حفظ WAV في الهاتف");export.setEnabled(false);actions.addView(export);
+    status=label("جاري تشغيل محرك الصوت المحلي...",13,gold);root.addView(status);
     generate.setOnClickListener(v->generateSpeech());play.setOnClickListener(v->playResult());export.setOnClickListener(v->exportWav());
   }
-  private String voiceId(){String s=(String)voice.getSelectedItem();return s.substring(0,s.indexOf(" —"));}
-  private String selectedStyle(){String s=(String)mood.getSelectedItem();String extra=style.getText().toString().trim();return "Perform in Egyptian Arabic. "+s+". Natural human voice acting, expressive but believable, clear pronunciation, consistent pacing. "+extra;}
-  private void generateSpeech(){
-    final String key=apiKey.getText().toString().trim(), text=script.getText().toString().trim();
-    final String selectedVoice=voiceId(), deliveryStyle=selectedStyle();
-    if(key.isEmpty()){status.setText("أدخل مفتاح Gemini API أولًا.");return;}
-    if(text.isEmpty()){status.setText("اكتب النص الذي تريد تحويله إلى صوت.");return;}
-    generate.setEnabled(false);play.setEnabled(false);export.setEnabled(false);status.setText("جاري توليد الأداء الصوتي من Gemini 3.8 Flash TTS...");
-    new Thread(()->{
-      HttpURLConnection conn=null;
-      try{
-        JSONObject part=new JSONObject();part.put("text",text);part.put("speechMetadata",new JSONObject().put("style",deliveryStyle));
-        JSONObject content=new JSONObject();content.put("role","user");content.put("parts",new JSONArray().put(part));
-        JSONObject voiceConfig=new JSONObject().put("prebuiltVoiceConfig",new JSONObject().put("voiceName",selectedVoice));
-        JSONObject speechConfig=new JSONObject().put("voiceConfig",voiceConfig);
-        JSONObject generationConfig=new JSONObject().put("responseModalities",new JSONArray().put("AUDIO")).put("speechConfig",speechConfig);
-        JSONObject body=new JSONObject();body.put("contents",new JSONArray().put(content));body.put("generationConfig",generationConfig);
-        URL url=new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-tts:generateContent?key="+java.net.URLEncoder.encode(key,"UTF-8"));
-        conn=(HttpURLConnection)url.openConnection();conn.setRequestMethod("POST");conn.setConnectTimeout(30000);conn.setReadTimeout(180000);conn.setDoOutput(true);conn.setRequestProperty("Content-Type","application/json; charset=UTF-8");
-        try(OutputStream os=conn.getOutputStream()){os.write(body.toString().getBytes("UTF-8"));}
-        int code=conn.getResponseCode();InputStream is=(code>=200&&code<300)?conn.getInputStream():conn.getErrorStream();String response=readAll(is);
-        if(code<200||code>=300)throw new Exception("Gemini API ("+code+"): "+extractError(response));
-        JSONObject json=new JSONObject(response);JSONArray candidates=json.optJSONArray("candidates");String audio=null;
-        if(candidates!=null&&candidates.length()>0){JSONObject candidate=candidates.optJSONObject(0);JSONObject candidateContent=candidate==null?null:candidate.optJSONObject("content");JSONArray parts=candidateContent==null?null:candidateContent.optJSONArray("parts");if(parts!=null)for(int i=0;i<parts.length();i++){JSONObject p=parts.optJSONObject(i);JSONObject inline=p==null?null:p.optJSONObject("inlineData");if(inline!=null&&inline.has("data")){audio=inline.optString("data",null);if(audio!=null)break;}}}
-        if(audio==null)throw new Exception("لم يرجع المحرك ملفًا صوتيًا. راجع مفتاح API وتوفر النموذج.");
-        byte[] bytes=android.util.Base64.decode(audio,android.util.Base64.DEFAULT);
-        File dir=getExternalFilesDir(Environment.DIRECTORY_MUSIC);if(dir==null)dir=getFilesDir();if(!dir.exists())dir.mkdirs();
-        File out=new File(dir,"SELO_Voice_"+new SimpleDateFormat("yyyyMMdd_HHmmss",Locale.US).format(new Date())+".wav");
-        try(FileOutputStream fos=new FileOutputStream(out)){fos.write(bytes);}
-        wavBytes=bytes;wavFile=out;
-        handler.post(()->{status.setText("تم توليد الأداء بنجاح ✓  "+out.getName());play.setEnabled(true);export.setEnabled(true);generate.setEnabled(true);});
-      }catch(Exception e){String msg=e.getMessage()==null?"حدث خطأ غير معروف":e.getMessage();handler.post(()->{status.setText("تعذر التوليد: "+msg);generate.setEnabled(true);});}
-      finally{if(conn!=null)conn.disconnect();}
-    }).start();
+  private void initTts(){
+    tts=new TextToSpeech(this,result->{
+      if(result!=TextToSpeech.SUCCESS){status.setText("محرك النطق غير متاح على الهاتف.");generate.setEnabled(false);return;}
+      int language=tts.setLanguage(new Locale("ar"));
+      Set<Voice> all=tts.getVoices();
+      if(all!=null){for(Voice voice:all)if(voice.getLocale()!=null&&"ar".equals(voice.getLocale().getLanguage()))arabicVoices.add(voice);}
+      Collections.sort(arabicVoices,(a,b)->{if(a.isNetworkConnectionRequired()!=b.isNetworkConnectionRequired())return a.isNetworkConnectionRequired()?1:-1;return Integer.compare(b.getQuality(),a.getQuality());});
+      if(!arabicVoices.isEmpty()){
+        ArrayList<String> names=new ArrayList<>();for(Voice voice:arabicVoices)names.add(voice.getName()+(voice.isNetworkConnectionRequired()?" · يحتاج إنترنت":" · يعمل دون إنترنت"));
+        voicePicker.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,names));
+        voicePicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int position,long id){if(tts!=null&&position<arabicVoices.size())tts.setVoice(arabicVoices.get(position));}public void onNothingSelected(AdapterView<?> p){}});
+      }
+      if(language==TextToSpeech.LANG_MISSING_DATA||language==TextToSpeech.LANG_NOT_SUPPORTED){
+        status.setText(arabicVoices.isEmpty()?"ما فيه صوت عربي مثبت. استخدم زر إعدادات تنزيل الأصوات ثم جرّب مرة ثانية.":"تم العثور على أصوات عربية. اختر الصوت واضغط إنشاء.");
+      }else status.setText(arabicVoices.isEmpty()?"محرك الهاتف جاهز؛ ما لقيت صوتًا عربيًا. نزّل صوتًا من إعدادات النطق.":"جاهز — اختر صوتًا عربيًا واكتب النص.");
+      tts.setOnUtteranceProgressListener(new UtteranceProgressListener(){
+        @Override public void onStart(String id){handler.post(()->status.setText("جاري إنشاء الصوت..."));}
+        @Override public void onDone(String id){handler.post(()->{play.setEnabled(true);export.setEnabled(true);generate.setEnabled(true);status.setText("تم إنشاء ملف الصوت على الهاتف ✓");});}
+        @Override public void onError(String id){handler.post(()->{generate.setEnabled(true);status.setText("تعذر إنشاء الصوت. تحقق من تثبيت صوت عربي في إعدادات الهاتف.");});}
+      });
+    });
   }
-  private String readAll(InputStream in)throws Exception{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toString("UTF-8");}
-  private String extractError(String s){try{JSONObject j=new JSONObject(s);return j.optJSONObject("error")!=null?j.getJSONObject("error").optString("message",s):s;}catch(Exception e){return s;}}
+  private void generateSpeech(){
+    String text=script.getText().toString().trim();
+    if(text.isEmpty()){status.setText("اكتب النص الذي تريد تحويله إلى صوت.");return;}
+    if(tts==null){status.setText("محرك الصوت لم يجهز بعد.");return;}
+    File dir=getExternalFilesDir(Environment.DIRECTORY_MUSIC);if(dir==null)dir=getFilesDir();if(!dir.exists()&&!dir.mkdirs()){status.setText("تعذر تجهيز مجلد الصوت.");return;}
+    wavFile=new File(dir,"SELO_Voice_"+new SimpleDateFormat("yyyyMMdd_HHmmss",Locale.US).format(new Date())+".wav");
+    generate.setEnabled(false);play.setEnabled(false);export.setEnabled(false);
+    float rate=.6f+speed.getProgress()/100f;tts.setSpeechRate(rate);
+    String id="selo_"+System.currentTimeMillis();
+    int result=tts.synthesizeToFile(text,new Bundle(),wavFile,id);
+    if(result!=TextToSpeech.SUCCESS){generate.setEnabled(true);status.setText("محرك الهاتف رفض النص. جرّب نصًا أقصر أو صوتًا عربيًا آخر.");}
+  }
   private void playResult(){try{if(wavFile==null||!wavFile.exists())return;if(player!=null){player.release();player=null;}player=new MediaPlayer();player.setDataSource(wavFile.getAbsolutePath());player.setOnPreparedListener(mp->{mp.start();status.setText("يتم تشغيل الأداء الصوتي...");});player.setOnCompletionListener(mp->status.setText("انتهى تشغيل الأداء الصوتي."));player.prepareAsync();}catch(Exception e){status.setText("تعذر تشغيل الملف: "+e.getMessage());}}
   private void exportWav(){if(wavFile==null||!wavFile.exists())return;try{ContentValues v=new ContentValues();v.put(MediaStore.MediaColumns.DISPLAY_NAME,wavFile.getName());v.put(MediaStore.MediaColumns.MIME_TYPE,"audio/wav");v.put(MediaStore.MediaColumns.RELATIVE_PATH,Environment.DIRECTORY_MUSIC+"/SELO Voice Actor");Uri uri=getContentResolver().insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,v);if(uri==null)throw new Exception("تعذر إنشاء الملف");try(InputStream in=new FileInputStream(wavFile);OutputStream out=getContentResolver().openOutputStream(uri)){byte[] b=new byte[8192];int n;while((n=in.read(b))>0)out.write(b,0,n);}status.setText("تم الحفظ في Music/SELO Voice Actor ✓");}catch(Exception e){status.setText("تعذر الحفظ: "+e.getMessage());}}
-  @Override protected void onDestroy(){if(player!=null){player.release();player=null;}super.onDestroy();}
+  @Override protected void onDestroy(){if(player!=null){player.release();player=null;}if(tts!=null){tts.stop();tts.shutdown();tts=null;}super.onDestroy();}
 }
